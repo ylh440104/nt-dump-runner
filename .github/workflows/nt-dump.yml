@@ -1,0 +1,91 @@
+name: nt-dump
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "types | decomp"
+        required: true
+        default: types
+      shard:
+        required: true
+        default: "0"
+      shards:
+        required: true
+        default: "1"
+
+env:
+  SYM_DIR: ${{ github.workspace }}\sym
+  OUT_DIR: ${{ github.workspace }}\out
+  GHIDRA_HOME: ${{ github.workspace }}\ghidra
+
+jobs:
+  dump:
+    runs-on: windows-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: stage binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:OUT_DIR,$env:SYM_DIR | Out-Null
+          Copy-Item "$env:SystemRoot\System32\ntoskrnl.exe" "$env:OUT_DIR\ntoskrnl.exe"
+          Copy-Item "$env:SystemRoot\System32\hal.dll" "$env:OUT_DIR\hal.dll"
+          (Get-Item "$env:OUT_DIR\ntoskrnl.exe").VersionInfo | Format-List FileVersion,ProductVersion
+
+      - name: fetch pdb
+        shell: pwsh
+        run: |
+          pip install pefile --quiet
+          $key = python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe"
+          Write-Host "pdb key = $key"
+          $url = "https://msdl.microsoft.com/download/symbols/ntoskrnl.pdb/$key/ntoskrnl.pdb"
+          Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\ntoskrnl.pdb"
+          Copy-Item "$env:SYM_DIR\ntoskrnl.pdb" "$env:OUT_DIR\ntoskrnl.pdb"
+          "{0:N0} bytes" -f (Get-Item "$env:SYM_DIR\ntoskrnl.pdb").Length
+
+      - name: fetch ghidra
+        shell: pwsh
+        run: |
+          $rel = Invoke-RestMethod -Headers @{'User-Agent'='gh'} https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest
+          $asset = $rel.assets | Where-Object { $_.name -match '_PUBLIC_\.zip$' } | Select-Object -First 1
+          Write-Host "ghidra $($rel.tag_name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile ghidra.zip
+          Expand-Archive ghidra.zip -DestinationPath $env:GHIDRA_HOME
+
+      - name: run headless
+        shell: pwsh
+        run: |
+          $env:MAXMEM = "10G"
+          $env:SHARD = "${{ inputs.shard }}"
+          $env:SHARDS = "${{ inputs.shards }}"
+          $hd = (Get-ChildItem $env:GHIDRA_HOME -Recurse -Filter analyzeHeadless.bat | Select-Object -First 1).FullName
+          $common = @(
+            "$env:OUT_DIR\proj", "nt",
+            "-import", "$env:OUT_DIR\ntoskrnl.exe",
+            "-analysisTimeoutPerFile", "10800",
+            "-scriptPath", "$env:GITHUB_WORKSPACE\scripts",
+            "-deleteProject"
+          )
+          if ("${{ inputs.stage }}" -eq "types") {
+            & $hd @common -postScript DumpSymbols.java "$env:OUT_DIR\symbols.tsv" -postScript DumpTypes.java "$env:OUT_DIR\types.tsv"
+          } else {
+            & $hd @common -postScript DumpDecomp.java "$env:OUT_DIR\decomp_${{ inputs.shard }}.c"
+          }
+
+      - name: push out
+        if: always()
+        shell: pwsh
+        env:
+          OUT_TOKEN: ${{ secrets.OUT_TOKEN }}
+        run: python scripts/push_out.py
