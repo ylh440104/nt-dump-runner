@@ -75,8 +75,10 @@ jobs:
         shell: pwsh
         run: |
           $rel = Invoke-RestMethod -Headers @{'User-Agent'='gh'} https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest
-          $asset = $rel.assets | Where-Object { $_.name -match '_PUBLIC_\.zip$' } | Select-Object -First 1
           Write-Host "ghidra $($rel.tag_name)"
+          $rel.assets | ForEach-Object { Write-Host "asset: $($_.name)" }
+          $asset = $rel.assets | Where-Object { $_.name -like "*_PUBLIC_*.zip" } | Select-Object -First 1
+          if (-not $asset) { throw "ghidra zip not found" }
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile ghidra.zip
           Expand-Archive ghidra.zip -DestinationPath $env:GHIDRA_HOME
 
