@@ -99,6 +99,8 @@ jobs:
           )
           if ("${{ inputs.stage }}" -eq "types") {
             & $hd @common -postScript DumpSymbols.java "$env:OUT_DIR\symbols.tsv" -postScript DumpTypes.java "$env:OUT_DIR\types.tsv"
+            if (-not (Test-Path "$env:OUT_DIR\types.tsv")) { throw "types.tsv missing" }
+            if (-not (Test-Path "$env:OUT_DIR\symbols.tsv")) { throw "symbols.tsv missing" }
           } else {
             & $hd @common -postScript DumpDecomp.java "$env:OUT_DIR\decomp_${{ inputs.shard }}.c"
           }
