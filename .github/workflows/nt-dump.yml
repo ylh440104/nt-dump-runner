@@ -47,23 +47,29 @@ jobs:
         shell: pwsh
         run: |
           pip install pefile --quiet
-          $keys = @(python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe" | Where-Object { $_ -match '^[0-9A-Fa-f]+$' })
-          Write-Host "candidates: $($keys -join ', ')"
+          $rows = @(python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe" | Where-Object { $_ -match '\t' })
+          Write-Host ($rows -join ' | ')
           $ok = $false
-          foreach ($k in $keys) {
-            $url = "https://msdl.microsoft.com/download/symbols/ntoskrnl.pdb/$k/ntoskrnl.pdb"
+          $hit = $null
+          foreach ($row in $rows) {
+            $parts = $row -split "`t"
+            $name = $parts[0]
+            $k = $parts[1]
+            $url = "https://msdl.microsoft.com/download/symbols/$name/$k/$name"
+            Write-Host "try $url"
             try {
-              Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\ntoskrnl.pdb" -ErrorAction Stop
-              Write-Host "hit $k"
+              Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\$name" -ErrorAction Stop
+              Write-Host "hit $name"
               $ok = $true
+              $hit = $name
               break
             } catch {
-              Write-Host "miss $k"
+              Write-Host "miss $($_.Exception.Message)"
             }
           }
           if (-not $ok) { throw "no pdb key worked" }
-          Copy-Item "$env:SYM_DIR\ntoskrnl.pdb" "$env:OUT_DIR\ntoskrnl.pdb"
-          "{0:N0} bytes" -f (Get-Item "$env:SYM_DIR\ntoskrnl.pdb").Length
+          Copy-Item "$env:SYM_DIR\$hit" "$env:OUT_DIR\$hit"
+          "{0:N0} bytes" -f (Get-Item "$env:SYM_DIR\$hit").Length
 
       - name: fetch ghidra
         shell: pwsh
