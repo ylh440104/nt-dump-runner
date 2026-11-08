@@ -86,6 +86,7 @@ jobs:
         shell: pwsh
         run: |
           $env:MAXMEM = "10G"
+          New-Item -ItemType Directory -Force -Path "$env:OUT_DIR\proj" | Out-Null
           $env:SHARD = "${{ inputs.shard }}"
           $env:SHARDS = "${{ inputs.shards }}"
           $hd = (Get-ChildItem $env:GHIDRA_HOME -Recurse -Filter analyzeHeadless.bat | Select-Object -First 1).FullName
