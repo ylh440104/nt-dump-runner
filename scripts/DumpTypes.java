@@ -2,7 +2,6 @@ import ghidra.app.script.GhidraScript;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeManager;
-import ghidra.program.model.data.EnumValue;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.Union;
 import java.io.PrintWriter;
@@ -36,9 +35,9 @@ public class DumpTypes extends GhidraScript {
                             c.getOffset(), c.getLength(), c.getDataType().getDisplayName());
                     }
                 } else if (dt instanceof ghidra.program.model.data.Enum e) {
-                    for (EnumValue v : e.getValues()) {
+                    for (String n : e.getNames()) {
                         pw.printf("ENUM\t%s\t%s\t%s\t%d\t%d\t%n",
-                            e.getPathName(), e.getName(), v.getName(), v.getValue(), e.getLength());
+                            e.getPathName(), e.getName(), n, e.getValue(n), e.getLength());
                     }
                 }
             }
