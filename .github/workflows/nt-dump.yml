@@ -47,10 +47,21 @@ jobs:
         shell: pwsh
         run: |
           pip install pefile --quiet
-          $key = python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe"
-          Write-Host "pdb key = $key"
-          $url = "https://msdl.microsoft.com/download/symbols/ntoskrnl.pdb/$key/ntoskrnl.pdb"
-          Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\ntoskrnl.pdb"
+          $keys = @(python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe" | Where-Object { $_ -match '^[0-9A-Fa-f]+$' })
+          Write-Host "candidates: $($keys -join ', ')"
+          $ok = $false
+          foreach ($k in $keys) {
+            $url = "https://msdl.microsoft.com/download/symbols/ntoskrnl.pdb/$k/ntoskrnl.pdb"
+            try {
+              Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\ntoskrnl.pdb" -ErrorAction Stop
+              Write-Host "hit $k"
+              $ok = $true
+              break
+            } catch {
+              Write-Host "miss $k"
+            }
+          }
+          if (-not $ok) { throw "no pdb key worked" }
           Copy-Item "$env:SYM_DIR\ntoskrnl.pdb" "$env:OUT_DIR\ntoskrnl.pdb"
           "{0:N0} bytes" -f (Get-Item "$env:SYM_DIR\ntoskrnl.pdb").Length
 
