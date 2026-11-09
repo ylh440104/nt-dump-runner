@@ -45,13 +45,21 @@ jobs:
           $mod = "${{ inputs.module }}"
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR,$env:SYM_DIR,"$env:OUT_DIR\proj" | Out-Null
           if ($mod -eq "LIST") {
-            $names = @()
-            $names += Get-ChildItem "$env:SystemRoot\System32" -Filter *.sys -File -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName }
-            $names += Get-ChildItem "$env:SystemRoot\System32\drivers" -Filter *.sys -File -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName }
-            $names += @("hal","ci")
-            $names = $names | Sort-Object -Unique
-            $names | Set-Content "$env:OUT_DIR\module_list.tsv"
-            Write-Host "module count: $($names.Count)"
+            $seen = @{}
+            $out = @()
+            $dirs = @("$env:SystemRoot\System32", "$env:SystemRoot\System32\drivers", "$env:SystemRoot\boot\EFI")
+            foreach ($d in $dirs) {
+              if (-not (Test-Path $d)) { continue }
+              $files = Get-ChildItem $d -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.sys', '.dll', '.exe', '.efi' }
+              foreach ($f in $files) {
+                $n = $f.BaseName
+                if ($seen.ContainsKey($n)) { continue }
+                $seen[$n] = $true
+                $out += "$n`t$($f.Length)"
+              }
+            }
+            $out | Set-Content "$env:OUT_DIR\module_list.tsv"
+            Write-Host "module count: $($out.Count)"
             exit 0
           }
           if ($mod -eq "ntoskrnl") {
@@ -60,7 +68,10 @@ jobs:
             $cands = @(
               "$env:SystemRoot\System32\$mod.sys",
               "$env:SystemRoot\System32\$mod.dll",
-              "$env:SystemRoot\System32\drivers\$mod.sys"
+              "$env:SystemRoot\System32\$mod.exe",
+              "$env:SystemRoot\System32\$mod.efi",
+              "$env:SystemRoot\System32\drivers\$mod.sys",
+              "$env:SystemRoot\boot\EFI\$mod.efi"
             )
             $src = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
           }
