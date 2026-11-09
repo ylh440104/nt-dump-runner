@@ -64,11 +64,16 @@ jobs:
           git apply --verbose /tmp/ob.patch
           git diff --stat
 
+      - name: install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build cmake nasm bison flex gettext \
+            texinfo libgmp-dev libmpfr-dev libmpc-dev \
+            gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64
+
       - name: build ntoskrnl
         run: |
-          docker run --rm -v /tmp/ros:/reactos -w /reactos reactos/buildenv \
-            bash -c "./configure.sh && ninja -C output-MinGW-i386 ntoskrnl" 2>&1 | tail -60
-
-      - name: done
-        if: always()
-        run: echo finished
+          cd /tmp/ros
+          ./configure.sh 2>&1 | tail -20
+          ls -d output-* || true
+          ninja -C output-MinGW-i386 ntoskrnl 2>&1 | tail -60
