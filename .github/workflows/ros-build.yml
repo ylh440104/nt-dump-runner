@@ -1,0 +1,74 @@
+name: ros-build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: fetch reactos
+        run: |
+          git clone --depth 1 https://github.com/reactos/reactos.git /tmp/ros
+          cd /tmp/ros && git log -1 --oneline
+
+      - name: apply patch
+        run: |
+          cd /tmp/ros
+          cat > /tmp/ob.patch <<'PATCH_EOF'
+          diff --git a/ntoskrnl/ob/obref.c b/ntoskrnl/ob/obref.c
+          index 1448d29..62a0f2d 100644
+          --- a/ntoskrnl/ob/obref.c
+          +++ b/ntoskrnl/ob/obref.c
+          @@ -15,6 +15,8 @@
+           #define NDEBUG
+           #include <debug.h>
+           
+          +#define OBJECT_HEADER_CORRUPTION 0x18
+          +
+           /* PRIVATE FUNCTIONS *********************************************************/
+           
+           BOOLEAN
+          @@ -96,7 +98,28 @@ ObDereferenceObjectEx(IN PVOID Object,
+           
+               /* Check whether the object can now be deleted. */
+               NewCount = InterlockedExchangeAddSizeT(&Header->PointerCount, -Count) - Count;
+          -    if (!NewCount) ObpDeferObjectDeletion(Header);
+          +    if (NewCount < 1)
+          +    {
+          +        if (Header->HandleCount != 0)
+          +        {
+          +            KeBugCheckEx(OBJECT_HEADER_CORRUPTION,
+          +                         (ULONG_PTR)Header->Type,
+          +                         (ULONG_PTR)Object,
+          +                         6,
+          +                         (ULONG_PTR)NewCount);
+          +        }
+          +
+          +        if (NewCount < 0)
+          +        {
+          +            KeBugCheckEx(OBJECT_HEADER_CORRUPTION,
+          +                         0,
+          +                         (ULONG_PTR)Object,
+          +                         5,
+          +                         (ULONG_PTR)NewCount);
+          +        }
+          +
+          +        ObpDeferObjectDeletion(Header);
+          +    }
+           
+               /* Return the current count */
+               return NewCount;
+          PATCH_EOF
+          git apply --verbose /tmp/ob.patch
+          git diff --stat
+
+      - name: build ntoskrnl
+        run: |
+          docker run --rm -v /tmp/ros:/reactos -w /reactos reactos/buildenv \
+            bash -c "./configure.sh && ninja -C output-MinGW-i386 ntoskrnl" 2>&1 | tail -60
+
+      - name: done
+        if: always()
+        run: echo finished
