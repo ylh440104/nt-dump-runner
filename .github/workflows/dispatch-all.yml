@@ -1,0 +1,97 @@
+name: dispatch-all
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "how many modules to fire"
+        required: true
+        default: "120"
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: fire
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.OUT_TOKEN }}
+        run: |
+          python3 - "${{ inputs.count }}" <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+          import time
+          import urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          COUNT = int(sys.argv[1])
+          SRC = "ylh440104/nt-dump-runner"
+          DST = "ylh440104/nt-dump-out"
+          HEAD = {
+              "Authorization": "token " + TOKEN,
+              "User-Agent": "fire",
+              "Accept": "application/vnd.github+json",
+          }
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers=HEAD)
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.loads(r.read())
+
+          def get_text(repo, path):
+              try:
+                  d = get_json("https://api.github.com/repos/%s/contents/%s" % (repo, path))
+                  return base64.b64decode(d["content"]).decode("utf-8", "replace")
+              except Exception:
+                  return ""
+
+          names = [x.strip() for x in open("module_list.tsv", encoding="utf-8").read().splitlines() if x.strip()]
+          att = set(x.strip() for x in get_text(DST, "modules/LIST/attempted.tsv").splitlines() if x.strip())
+          rest = [n for n in names if n not in att]
+          batch = rest[:COUNT]
+          print("total", len(names), "attempted", len(att), "remaining", len(rest), "firing", len(batch))
+
+          fired = []
+          for m in batch:
+              body = json.dumps({
+                  "ref": "main",
+                  "inputs": {"module": m, "stage": "all", "shard": "0", "shards": "1"},
+              }).encode()
+              for _ in range(3):
+                  try:
+                      req = urllib.request.Request(
+                          "https://api.github.com/repos/%s/actions/workflows/nt-dump.yml/dispatches" % SRC,
+                          data=body, method="POST", headers=HEAD)
+                      urllib.request.urlopen(req, timeout=30)
+                      fired.append(m)
+                      break
+                  except Exception:
+                      time.sleep(2)
+              time.sleep(0.3)
+
+          print("fired", len(fired), "failed", len(batch) - len(fired))
+
+          if fired:
+              att2 = sorted(att | set(fired))
+              content = "\n".join(att2) + "\n"
+              body = {
+                  "message": "attempted +%d" % len(fired),
+                  "content": base64.b64encode(content.encode()).decode(),
+                  "branch": "main",
+              }
+              try:
+                  cur = get_json("https://api.github.com/repos/%s/contents/modules/LIST/attempted.tsv" % DST)
+                  body["sha"] = cur["sha"]
+              except Exception:
+                  pass
+              req = urllib.request.Request(
+                  "https://api.github.com/repos/%s/contents/modules/LIST/attempted.tsv" % DST,
+                  data=json.dumps(body).encode(), method="PUT", headers=HEAD)
+              urllib.request.urlopen(req, timeout=60)
+              print("attempted now", len(att2))
+          PY
