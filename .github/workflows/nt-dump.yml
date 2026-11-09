@@ -3,10 +3,14 @@ name: nt-dump
 on:
   workflow_dispatch:
     inputs:
-      stage:
-        description: "types | decomp"
+      module:
+        description: "ntoskrnl | hal | win32kbase | win32kfull | ci | clfs | ..."
         required: true
-        default: types
+        default: ntoskrnl
+      stage:
+        description: "types | all"
+        required: true
+        default: all
       shard:
         required: true
         default: "0"
@@ -35,19 +39,34 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: stage binaries
+      - name: stage binary
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path $env:OUT_DIR,$env:SYM_DIR | Out-Null
-          Copy-Item "$env:SystemRoot\System32\ntoskrnl.exe" "$env:OUT_DIR\ntoskrnl.exe"
-          Copy-Item "$env:SystemRoot\System32\hal.dll" "$env:OUT_DIR\hal.dll"
-          (Get-Item "$env:OUT_DIR\ntoskrnl.exe").VersionInfo | Format-List FileVersion,ProductVersion
+          $mod = "${{ inputs.module }}"
+          New-Item -ItemType Directory -Force -Path $env:OUT_DIR,$env:SYM_DIR,"$env:OUT_DIR\proj" | Out-Null
+          if ($mod -eq "ntoskrnl") {
+            $src = "$env:SystemRoot\System32\ntoskrnl.exe"
+          } else {
+            $cands = @(
+              "$env:SystemRoot\System32\$mod.sys",
+              "$env:SystemRoot\System32\$mod.dll",
+              "$env:SystemRoot\System32\drivers\$mod.sys"
+            )
+            $src = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $src) { throw "module not found: $mod" }
+          $ext = [IO.Path]::GetExtension($src)
+          $bin = "$env:OUT_DIR\$mod$ext"
+          Copy-Item $src $bin
+          Write-Host "staged $src -> $bin"
+          (Get-Item $bin).VersionInfo | Format-List FileVersion,ProductVersion
+          Add-Content -Path $env:GITHUB_ENV -Value "BIN_PATH=$bin"
 
       - name: fetch pdb
         shell: pwsh
         run: |
           pip install pefile --quiet
-          $rows = @(python scripts/getpdbkey.py "$env:OUT_DIR\ntoskrnl.exe" | Where-Object { $_ -match '\t' })
+          $rows = @(python scripts/getpdbkey.py "$env:BIN_PATH" | Where-Object { $_ -match '\t' })
           Write-Host ($rows -join ' | ')
           $ok = $false
           $hit = $null
@@ -56,7 +75,6 @@ jobs:
             $name = $parts[0]
             $k = $parts[1]
             $url = "https://msdl.microsoft.com/download/symbols/$name/$k/$name"
-            Write-Host "try $url"
             try {
               Invoke-WebRequest -Uri $url -OutFile "$env:SYM_DIR\$name" -ErrorAction Stop
               Write-Host "hit $name"
@@ -76,7 +94,6 @@ jobs:
         run: |
           $rel = Invoke-RestMethod -Headers @{'User-Agent'='gh'} https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest
           Write-Host "ghidra $($rel.tag_name)"
-          $rel.assets | ForEach-Object { Write-Host "asset: $($_.name)" }
           $asset = $rel.assets | Where-Object { $_.name -like "*_PUBLIC_*.zip" } | Select-Object -First 1
           if (-not $asset) { throw "ghidra zip not found" }
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile ghidra.zip
@@ -86,28 +103,32 @@ jobs:
         shell: pwsh
         run: |
           $env:MAXMEM = "10G"
-          New-Item -ItemType Directory -Force -Path "$env:OUT_DIR\proj" | Out-Null
           $env:SHARD = "${{ inputs.shard }}"
           $env:SHARDS = "${{ inputs.shards }}"
+          $mod = "${{ inputs.module }}"
           $hd = (Get-ChildItem $env:GHIDRA_HOME -Recurse -Filter analyzeHeadless.bat | Select-Object -First 1).FullName
           $common = @(
             "$env:OUT_DIR\proj", "nt",
-            "-import", "$env:OUT_DIR\ntoskrnl.exe",
+            "-import", "$env:BIN_PATH",
             "-analysisTimeoutPerFile", "10800",
             "-scriptPath", "$env:GITHUB_WORKSPACE\scripts",
             "-deleteProject"
           )
           if ("${{ inputs.stage }}" -eq "types") {
-            & $hd @common -postScript DumpSymbols.java "$env:OUT_DIR\symbols.tsv" -postScript DumpTypes.java "$env:OUT_DIR\types.tsv"
-            if (-not (Test-Path "$env:OUT_DIR\types.tsv")) { throw "types.tsv missing" }
-            if (-not (Test-Path "$env:OUT_DIR\symbols.tsv")) { throw "symbols.tsv missing" }
+            & $hd @common -postScript DumpSymbols.java "$env:OUT_DIR\${mod}_symbols.tsv" -postScript DumpTypes.java "$env:OUT_DIR\${mod}_types.tsv"
           } else {
-            & $hd @common -postScript DumpDecomp.java "$env:OUT_DIR\decomp_${{ inputs.shard }}.c"
+            & $hd @common -postScript DumpSymbols.java "$env:OUT_DIR\${mod}_symbols.tsv" -postScript DumpTypes.java "$env:OUT_DIR\${mod}_types.tsv" -postScript DumpDecomp.java "$env:OUT_DIR\${mod}_decomp_${{ inputs.shard }}.c"
           }
+          $missing = @()
+          foreach ($f in @("${mod}_symbols.tsv", "${mod}_types.tsv")) {
+            if (-not (Test-Path "$env:OUT_DIR\$f")) { $missing += $f }
+          }
+          if ($missing.Count -gt 0) { throw "missing outputs: $($missing -join ', ')" }
 
       - name: push out
         if: always()
         shell: pwsh
         env:
           OUT_TOKEN: ${{ secrets.OUT_TOKEN }}
+          MODULE: ${{ inputs.module }}
         run: python scripts/push_out.py
