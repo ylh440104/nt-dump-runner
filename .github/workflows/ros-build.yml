@@ -5,17 +5,27 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 300
+    runs-on: windows-latest
+    timeout-minutes: 350
     steps:
-      - name: fetch reactos
+      - name: install ninja
+        run: choco install -y ninja
+
+      - name: install flex bison
         run: |
-          git clone --depth 1 https://github.com/reactos/reactos.git /tmp/ros
-          cd /tmp/ros && git log -1 --oneline
+          curl.exe -O https://svn.reactos.org/storage/vperevertkin/flexbison.7z
+          7z x flexbison.7z -o"${{ github.workspace }}\bin" -y
+          echo "${{ github.workspace }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "BISON_PKGDATADIR=${{ github.workspace }}\bin\share\bison" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "M4=${{ github.workspace }}\bin\m4.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: clone reactos
+        run: git clone --depth 1 https://github.com/reactos/reactos.git src
 
       - name: apply patch
+        shell: bash
         run: |
-          cd /tmp/ros
+          cd src
           cat > /tmp/ob.patch <<'PATCH_EOF'
           diff --git a/ntoskrnl/ob/obref.c b/ntoskrnl/ob/obref.c
           index 1448d29..62a0f2d 100644
@@ -64,16 +74,21 @@ jobs:
           git apply --verbose /tmp/ob.patch
           git diff --stat
 
-      - name: install toolchain
+      - name: activate msvc
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_x86
+          toolset: '14'
+
+      - name: configure
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ninja-build cmake nasm bison flex gettext \
-            texinfo libgmp-dev libmpfr-dev libmpc-dev \
-            gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64
+          cmake -S src -B build -G Ninja `
+            -DCMAKE_TOOLCHAIN_FILE:FILEPATH=toolchain-msvc.cmake `
+            -DARCH:STRING=i386 `
+            -DCMAKE_BUILD_TYPE:STRING=Debug `
+            -DDLL_EXPORT_VERSION:STRING=0x502 `
+            -DENABLE_ROSTESTS=0 `
+            -DENABLE_ROSAPPS=0
 
       - name: build ntoskrnl
-        run: |
-          cd /tmp/ros
-          ./configure.sh 2>&1 | tail -20
-          ls -d output-* || true
-          ninja -C output-MinGW-i386 ntoskrnl 2>&1 | tail -60
+        run: cmake --build build --target ntoskrnl -- -k 0
