@@ -8,6 +8,8 @@ import urllib.request
 TOKEN = os.environ.get("OUT_TOKEN")
 REPO = "ylh440104/nt-dump-out"
 OUT = os.environ.get("OUT_DIR", "out")
+MODULE = os.environ.get("MODULE", "ntoskrnl")
+BASE = "modules/" + MODULE + "/"
 CHUNK = 24 * 1024 * 1024
 
 
@@ -30,12 +32,12 @@ def api(method, path, body=None):
 
 def push(name, blob):
     b64 = base64.b64encode(blob).decode()
-    st, cur = api("GET", "contents/" + name)
+    st, cur = api("GET", "contents/" + BASE + name)
     sha = cur["sha"] if st == 200 else None
-    body = {"message": "add " + name, "content": b64, "branch": "main"}
+    body = {"message": "add " + MODULE + "/" + name, "content": b64, "branch": "main"}
     if sha:
         body["sha"] = sha
-    return api("PUT", "contents/" + name, body)
+    return api("PUT", "contents/" + BASE + name, body)
 
 
 files = sorted(glob.glob(os.path.join(OUT, "*.tsv"))) + sorted(glob.glob(os.path.join(OUT, "*.c")))
