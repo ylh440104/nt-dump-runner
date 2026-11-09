@@ -44,6 +44,16 @@ jobs:
         run: |
           $mod = "${{ inputs.module }}"
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR,$env:SYM_DIR,"$env:OUT_DIR\proj" | Out-Null
+          if ($mod -eq "LIST") {
+            $names = @()
+            $names += Get-ChildItem "$env:SystemRoot\System32" -Filter *.sys -File -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName }
+            $names += Get-ChildItem "$env:SystemRoot\System32\drivers" -Filter *.sys -File -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName }
+            $names += @("hal","ci")
+            $names = $names | Sort-Object -Unique
+            $names | Set-Content "$env:OUT_DIR\module_list.tsv"
+            Write-Host "module count: $($names.Count)"
+            exit 0
+          }
           if ($mod -eq "ntoskrnl") {
             $src = "$env:SystemRoot\System32\ntoskrnl.exe"
           } else {
@@ -63,6 +73,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "BIN_PATH=$bin"
 
       - name: fetch pdb
+        if: ${{ inputs.module != 'LIST' }}
         shell: pwsh
         run: |
           pip install pefile --quiet
@@ -90,6 +101,7 @@ jobs:
           "{0:N0} bytes" -f (Get-Item "$env:SYM_DIR\$hit").Length
 
       - name: fetch ghidra
+        if: ${{ inputs.module != 'LIST' }}
         shell: pwsh
         run: |
           $rel = Invoke-RestMethod -Headers @{'User-Agent'='gh'} https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest
@@ -100,6 +112,7 @@ jobs:
           Expand-Archive ghidra.zip -DestinationPath $env:GHIDRA_HOME
 
       - name: run headless
+        if: ${{ inputs.module != 'LIST' }}
         shell: pwsh
         run: |
           $env:MAXMEM = "10G"
