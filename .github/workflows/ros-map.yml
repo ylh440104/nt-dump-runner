@@ -64,7 +64,7 @@ jobs:
           print("decomp functions:", len(decomp_set))
 
           src_funcs = set()
-          pat = re.compile(r"^[A-Za-z_][A-Za-z0-9_ \t\*]*?\b([A-Z][A-Za-z0-9_]{2,})\s*\(")
+          pat = re.compile(r"^([A-Z][A-Za-z0-9_]{2,})\s*\(")
           bases = ["/tmp/ros/ntoskrnl", "/tmp/ros/sdk/lib", "/tmp/ros/hal"]
           for base in bases:
               for root, dirs, files in os.walk(base):
