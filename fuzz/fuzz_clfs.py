@@ -19,7 +19,7 @@ kernel32 = ctypes.WinDLL("kernel32.dll")
 CreateLogFileW = clfs.CreateLogFile
 CreateLogFileW.restype = wintypes.HANDLE
 CreateLogFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
-                           wintypes.DWORD, wintypes.DWORD]
+                           ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD]
 
 AddLogContainerW = clfs.AddLogContainer
 AddLogContainerW.restype = wintypes.BOOL
@@ -38,7 +38,7 @@ def make_seed():
         if os.path.exists(p):
             os.remove(p)
 
-    h = CreateLogFileW(seed_path, GENERIC_WRITE, FILE_SHARE_READ, CREATE_NEW, 0)
+    h = CreateLogFileW(seed_path, GENERIC_WRITE, FILE_SHARE_READ, None, CREATE_NEW, 0)
     if not h:
         raise RuntimeError("CreateLogFile failed: %d" % ctypes.get_last_error())
 
@@ -87,7 +87,7 @@ def main():
             f.write(payload)
 
         h = CreateLogFileW(target, GENERIC_READ | GENERIC_WRITE,
-                           FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, 0)
+                           FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, 0)
         if h:
             opened += 1
             CloseHandle(h)
