@@ -1,0 +1,32 @@
+name: clfs-fuzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "fuzz duration in seconds"
+        required: true
+        default: "600"
+
+jobs:
+  fuzz:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: fetch fuzzer
+        shell: pwsh
+        run: |
+          curl.exe -sL https://raw.githubusercontent.com/ylh440104/nt-dump-runner/main/fuzz/fuzz_clfs.py -o fuzz_clfs.py
+          Get-Content fuzz_clfs.py | Measure-Object -Line
+
+      - name: run
+        shell: pwsh
+        run: |
+          python fuzz_clfs.py ${{ inputs.seconds }}
+          if ($LASTEXITCODE -ne 0) { throw "fuzzer exit $LASTEXITCODE" }
+
+      - name: dump info
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem C:\clfsfuzz | Select-Object Name, Length | Format-Table
