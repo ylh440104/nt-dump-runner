@@ -16,12 +16,12 @@ OPEN_EXISTING = 3
 clfs = ctypes.WinDLL("clfsw32.dll")
 kernel32 = ctypes.WinDLL("kernel32.dll")
 
-CreateLogFileW = clfs.CreateLogFileW
+CreateLogFileW = clfs.CreateLogFile
 CreateLogFileW.restype = wintypes.HANDLE
 CreateLogFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
                            wintypes.DWORD, wintypes.DWORD]
 
-AddLogContainerW = clfs.AddLogContainerW
+AddLogContainerW = clfs.AddLogContainer
 AddLogContainerW.restype = wintypes.BOOL
 AddLogContainerW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPCWSTR,
                              ctypes.c_void_p]
