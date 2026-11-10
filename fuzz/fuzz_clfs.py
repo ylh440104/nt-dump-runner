@@ -42,9 +42,6 @@ def make_seed():
     if not h:
         raise RuntimeError("CreateLogFile failed: %d" % ctypes.get_last_error())
 
-    if not AddLogContainerW(h, 0x100000, cont_path, None):
-        raise RuntimeError("AddLogContainer failed: %d" % ctypes.get_last_error())
-
     CloseHandle(h)
 
     with open(seed_path + ".blf", "rb") as f:
