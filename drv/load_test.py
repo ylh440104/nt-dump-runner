@@ -64,19 +64,22 @@ def main():
 
     print("=" * 55)
     print("2. locate vcvars")
-    vs_root = r"C:\Program Files\Microsoft Visual Studio\2022"
+    vs_root = r"C:\Program Files\Microsoft Visual Studio"
     found = None
+    candidates = []
+    if os.path.isdir(vs_root):
+        for d in os.listdir(vs_root):
+            candidates.append(os.path.join(vs_root, d, "Enterprise"))
+            candidates.append(os.path.join(vs_root, d, "Professional"))
+            candidates.append(os.path.join(vs_root, d, "Community"))
+            candidates.append(os.path.join(vs_root, d, "BuildTools"))
     for ed in ("Enterprise", "Professional", "Community", "BuildTools"):
-        p = os.path.join(vs_root, ed, r"VC\Auxiliary\Build\vcvars64.bat")
+        candidates.append(os.path.join(r"C:\Program Files\Microsoft Visual Studio\2019", ed))
+    for base in candidates:
+        p = os.path.join(base, r"VC\Auxiliary\Build\vcvars64.bat")
         if os.path.exists(p):
             found = p
             break
-    if not found:
-        for ed in os.listdir(vs_root) if os.path.isdir(vs_root) else []:
-            p = os.path.join(vs_root, ed, r"VC\Auxiliary\Build\vcvars64.bat")
-            if os.path.exists(p):
-                found = p
-                break
     print("   vcvars:", found or "NOT FOUND")
     if not found:
         return
