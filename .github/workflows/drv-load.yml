@@ -1,0 +1,32 @@
+name: drv-load
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: fetch
+        shell: pwsh
+        run: |
+          mkdir C:\dl
+          curl.exe -sL https://raw.githubusercontent.com/ylh440104/nt-dump-runner/main/drv/mini.c -o C:\dl\mini.c
+          curl.exe -sL https://raw.githubusercontent.com/ylh440104/nt-dump-runner/main/drv/load_test.py -o C:\dl\load_test.py
+          Get-ChildItem C:\dl | Select-Object Name, Length
+
+      - name: testsigning state
+        shell: pwsh
+        run: |
+          bcdedit /enum "{current}" | Select-String -Pattern "testsigning|nointegritychecks|debug"
+          Write-Host "---"
+          bcdedit /set testsigning on
+          Write-Host "after set:"
+          bcdedit /enum "{current}" | Select-String -Pattern "testsigning"
+
+      - name: run load test
+        shell: pwsh
+        run: |
+          cd C:\dl
+          python load_test.py
