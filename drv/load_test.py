@@ -63,12 +63,29 @@ def main():
     print("   bytes:", len(body))
 
     print("=" * 55)
-    print("2. compile with cl")
-    out, err, rc = run(
-        'cmd /c ""C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat" '
-        '>nul && cl /nologo /c /GS- /Gs- "%s" /Fo"%s\\mini.obj" && '
-        'link /nologo /DRIVER /SUBSYSTEM:NATIVE /ENTRY:DriverEntry /FORCE:UNRESOLVED '
-        '/OUT:"%s" "%s\\mini.obj"" ' % (src, WORK, sys_path, WORK))
+    print("2. locate vcvars")
+    vs_root = r"C:\Program Files\Microsoft Visual Studio\2022"
+    found = None
+    for ed in ("Enterprise", "Professional", "Community", "BuildTools"):
+        p = os.path.join(vs_root, ed, r"VC\Auxiliary\Build\vcvars64.bat")
+        if os.path.exists(p):
+            found = p
+            break
+    if not found:
+        for ed in os.listdir(vs_root) if os.path.isdir(vs_root) else []:
+            p = os.path.join(vs_root, ed, r"VC\Auxiliary\Build\vcvars64.bat")
+            if os.path.exists(p):
+                found = p
+                break
+    print("   vcvars:", found or "NOT FOUND")
+    if not found:
+        return
+
+    print("=" * 55)
+    print("3. compile with cl")
+    cmd = 'cmd /c "call "%s" >nul && cl /nologo /c /GS- /Gs- "%s" /Fo"%s\\mini.obj" && link /nologo /DRIVER /SUBSYSTEM:NATIVE /ENTRY:DriverEntry /FORCE:UNRESOLVED /OUT:"%s" "%s\\mini.obj""' % (
+        found, src, WORK, sys_path, WORK)
+    out, err, rc = run(cmd)
     print("   rc:", rc)
     print("   err:", err[:600] if err else "(none)")
     print("   sys exists:", os.path.exists(sys_path),
