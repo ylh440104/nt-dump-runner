@@ -1,0 +1,23 @@
+name: probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  p:
+    runs-on: windows-latest
+    steps:
+      - shell: pwsh
+        run: |
+          Write-Host "=== VS dirs ==="
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue | Select-Object Name
+          Write-Host "=== VSwhere ==="
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -all -products * -format value -property installationPath 2>$null
+          Write-Host "=== cl in PATH ==="
+          where.exe cl 2>$null
+          Write-Host "=== Windows Kits ==="
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue | Select-Object Name
+          Write-Host "=== gcc ==="
+          where.exe gcc 2>$null
+          Write-Host "=== choco local ==="
+          choco list --local-only 2>$null | Select-Object -First 25
